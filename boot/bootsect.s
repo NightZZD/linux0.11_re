@@ -44,16 +44,16 @@ ROOT_DEV = 0x306
 
 entry start
 start:
-	mov	ax,#BOOTSEG
-	mov	ds,ax
-	mov	ax,#INITSEG
-	mov	es,ax
-	mov	cx,#256
+	mov	ax,#BOOTSEG ; 0 盘 0 道 1 扇区的内容一共有 512 个字节，如果末尾的两个字节分别是 0x55 和 0xaa，那么 BIOS 就会认为它是个启动区; 加载，就是把这 512 个字节的内容，一个比特都不少的全部复制到内存的 0x7c00 这个位置
+	mov	ds,ax ! ds此时保存的是0x07c0, 0x07c0是默认的MBR的起始地址 - 需要定位到这个地址
+	mov	ax,#INITSEG 
+	mov	es,ax ! es保存的是0x9000,为复制命令做准备：从 DS:SI 开始复制 256 个字（512 字节）到 ES:DI，其中SI,DI都被清零了。
+	mov	cx,#256	! linus在这里写的是10进制, 为了下面重复执行256次movw指令
 	sub	si,si
-	sub	di,di
-	rep
-	movw
-	jmpi	go,INITSEG
+	sub	di,di ! 这两个指令都是清零寄存器
+	rep movw ! rep 是一个 指令前缀，表示“重复执行下一条字符串操作指令”，直到 CX 寄存器为 0
+	! 执行 256 次 movw（每次复制一个字，2 字节） 总共复制：256 × 2 = 512 字节（一个扇区大小）. 从 DS:SI 开始复制 256 个字（512 字节）到 ES:DI
+	jmpi	go,INITSEG ! 这是一条 远跳转（far jump） 指令，它会同时设置：CS = INITSEG = 0x9000 IP = go 的偏移（比如 0x20）jmpi offset目标代码在段内的偏移地址, segment目标代码所在的段地址
 go:	mov	ax,cs
 	mov	ds,ax
 	mov	es,ax
