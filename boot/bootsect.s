@@ -53,7 +53,10 @@ start:
 	sub	di,di ! 这两个指令都是清零寄存器
 	rep movw ! rep 是一个 指令前缀，表示“重复执行下一条字符串操作指令”，直到 CX 寄存器为 0
 	! 执行 256 次 movw（每次复制一个字，2 字节） 总共复制：256 × 2 = 512 字节（一个扇区大小）. 从 DS:SI 开始复制 256 个字（512 字节）到 ES:DI
-	jmpi	go,INITSEG ! 这是一条 远跳转（far jump） 指令，它会同时设置：CS = INITSEG = 0x9000 IP = go 的偏移（比如 0x20）jmpi offset目标代码在段内的偏移地址, segment目标代码所在的段地址
+	! DS:SI = 0x07C00 + 0 = 0x07c00 = 31744 字节处
+	! ES:SI = 0X90000 + 0 = 0X90000 = 
+	jmpi	go,INITSEG ! jmpi offset目标代码在段内的偏移地址, segment目标代码所在的段地址
+	! 这是一条 远跳转（far jump） 指令，它会同时设置：CS = INITSEG = 0x9000 IP = go 的偏移（比如 0x20）
 go:	mov	ax,cs
 	mov	ds,ax
 	mov	es,ax
