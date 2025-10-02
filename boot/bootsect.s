@@ -64,43 +64,62 @@ go:	mov	ax,cs ! 此时CS是0X90000，IP指向go标号的地址
 	mov	ds,ax
 	mov	es,ax
 ! put stack at 0x9ff00.
-	mov	ss,ax ! SS 指向 0x9ff00
+	mov	ss,ax ! SS 指向 0x9000,SS:IP 指向 0x9ff00
 	mov	sp,#0xFF00		! arbitrary value >>512
 
 ! load the setup-sectors directly after the bootblock.
 ! Note that 'es' is already set up.
 
 load_setup:
-	mov	dx,#0x0000		! drive 0, head 0
-	mov	cx,#0x0002		! sector 2, track 0
+	mov	dx,#0x0000		! drive 0, head 0 ; mov dh, 0 ; 磁头号（Head） mov dl, 0 ; 驱动器号：0 = 软盘 A
+	mov	cx,#0x0002		! sector 2, track 0 ; mov ch, 0 ; 柱面号（Cylinder）mov cl, 2 ; 扇区号（Sector）。2其实表示第二个扇区
+	; IBM PC BIOS 规范（如 INT 13h）明确规定： “The sector number is 1-based. Sector numbering starts at 1.”
 	mov	bx,#0x0200		! address = 512, in INITSEG
-	mov	ax,#0x0200+SETUPLEN	! service 2, nr of sectors
+	mov	ax,#0x0200+SETUPLEN	! service 2, nr of sectors ; 0x0204 : mov ah, 0x02 ; 功能号：读取扇区 mov al, 4; 要读取的扇区数
 	int	0x13			! read it
-	jnc	ok_load_setup		! ok - continue
-	mov	dx,#0x0000
-	mov	ax,#0x0000		! reset the diskette
+	jnc	ok_load_setup	! ok - continue ; 如果成功（没有出错，CF=0）→ jnc ok_load_setup → 继续引导
+	mov	dx,#0x0000		; DH=0: 磁头 0; DL=0: 选择 A: 软驱 ; DL 寄存器用于指定要操作的磁盘驱动器
+	mov	ax,#0x0000		! reset the diskette ;mov ah, 0x00 ; 功能号：磁盘系统复位（Reset Disk System）; AL = 0x00 → 在此功能中通常无意义（可忽略）
 	int	0x13
-	j	load_setup
+	j	load_setup		; 现在磁盘已经复位，操作失败，重新尝试读取。这里会一直重试，也许会卡住
 
 ok_load_setup:
 
 ! Get disk drive parameters, specifically nr of sectors/track
 
-	mov	dl,#0x00
-	mov	ax,#0x0800		! AH=8 is get drive parameters
+	mov	dl,#0x00		; DL=0: 选择 A: 软驱
+	mov	ax,#0x0800		! AH=8 is get drive parameters ; AL 未使用（此处为 0）
 	int	0x13
-	mov	ch,#0x00
-	seg cs
-	mov	sectors,cx
+	; 返回值（在寄存器中）：
+	; CH = 柱面数（最大柱面号，从 0 开始）
+	; CL = 最大扇区号（即每磁道扇区数）
+	; DH = 最大磁头号
+	; DL = 实际检测到的驱动器数量（如 1 表示有 A:）
+	; 	对于 1.44MB 软盘：
+	; CH = 79（80 个柱面）
+	; CL = 18（每磁道 18 个扇区）
+	; DH = 1（2 个磁头，双面）
+	; DL = 1（1 个软驱）
+	mov	ch,#0x00 ; 将 CH 清零。原因：CH 原本是柱面号（最高 79），但我们只关心 CL 中的扇区数。
+	; 清零 CH 是为了后续将 CX 作为一个整体使用（CH=0, CL=扇区数），便于存储。
+	seg cs ; 表示“在代码段（CS）中操作”
+	mov	sectors,cx ; 将 CX 寄存器的值（即 CL 中的每磁道扇区数）存入变量 sectors
+	; sectors 是一个在引导代码中定义的内存变量，用于后续计算磁盘读取时的 CHS 地址。
+	; CHS : Cylinder-Head-Sector 柱面 - 磁头 - 扇区
+	; 作用：保存软盘每磁道的扇区数，供后续读取内核时使用。
 	mov	ax,#INITSEG
 	mov	es,ax
+	; 将 ES 段寄存器设置为 0x9000
+	; 原因：前面 int 0x13 可能会修改 ES（虽然 AH=8 通常不会），这里恢复 ES 到正确的段，确保后续内存操作正确。
+	; 在 bootsect 被加载到 0x7C00 后，通常会将其移动到 0x90000（即 0x9000:0x0000），所以 INITSEG = 0x9000
 
 ! Print some inane message
 
 	mov	ah,#0x03		! read cursor pos
-	xor	bh,bh
-	int	0x10
-	
+	xor	bh,bh			! page 0
+	int	0x10			
+	; 功能：读取当前光标位置
+	; 返回 DH=行（0-based）, DL=列, CX = 光标形状
 	mov	cx,#24
 	mov	bx,#0x0007		! page 0, attribute 7 (normal)
 	mov	bp,#msg1
