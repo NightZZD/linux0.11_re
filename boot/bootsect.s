@@ -44,7 +44,10 @@ ROOT_DEV = 0x306
 
 entry start
 start:
-	mov	ax,#BOOTSEG ; 0 盘 0 道 1 扇区的内容一共有 512 个字节，如果末尾的两个字节分别是 0x55 和 0xaa，那么 BIOS 就会认为它是个启动区; 加载，就是把这 512 个字节的内容，一个比特都不少的全部复制到内存的 0x7c00 这个位置
+	! BIOS 已经把你的代码放在了 0x7C00
+	! 原理：0 盘 0 道 1 扇区的内容一共有 512 个字节，如果末尾的两个字节分别是 0x55 和 0xaa，那么 BIOS 就会认为它是个启动区; 加载，就是把这 512 个字节的内容，一个比特都不少的全部复制到内存的 0x7c00 这个位置
+	! 所以只要从 0x7C00 开始执行指令。而执行指令只需设置CS:IP
+	mov	ax,#BOOTSEG ; 
 	mov	ds,ax ! ds此时保存的是0x07c0, 0x07c0是默认的MBR的起始地址 - 需要定位到这个地址
 	mov	ax,#INITSEG 
 	mov	es,ax ! es保存的是0x9000,为复制命令做准备：从 DS:SI 开始复制 256 个字（512 字节）到 ES:DI，其中SI,DI都被清零了。
@@ -57,11 +60,11 @@ start:
 	! ES:SI = 0X90000 + 0 = 0X90000 = 
 	jmpi	go,INITSEG ! jmpi offset目标代码在段内的偏移地址, segment目标代码所在的段地址
 	! 这是一条 远跳转（far jump） 指令，它会同时设置：CS = INITSEG = 0x9000 IP = go 的偏移（比如 0x20）
-go:	mov	ax,cs
+go:	mov	ax,cs ! 此时CS是0X90000，IP指向go标号的地址
 	mov	ds,ax
 	mov	es,ax
 ! put stack at 0x9ff00.
-	mov	ss,ax
+	mov	ss,ax ! SS 指向 0x9ff00
 	mov	sp,#0xFF00		! arbitrary value >>512
 
 ! load the setup-sectors directly after the bootblock.
